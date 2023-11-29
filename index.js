@@ -1,167 +1,162 @@
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
-const getVideoInfo = require("./utils/video-info");
-const parseFrameRate = require("./utils/frame-rate-parser");
+const getVideoInfo = require("./videoInfo.js");
+const parseFrameRate = require("./frameRateParser.js");
 
 const inputFilePath = "input.mp4";
 const outputDirectory = "output";
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
-// Function to create lower-quality versions
-async function createLowerQualityVersions(resolution, frameRate, totalFrames) {
-    const lowerQualityResolutions = ["1080p", "720p", "480p", "360p"];
-
-    for (const lowerResolution of lowerQualityResolutions) {
-        if (isResolutionLower(resolution, lowerResolution)) {
-            await createVideo(lowerResolution, frameRate, totalFrames);
-        }
-    }
-}
-
-// Function to create a video with given resolution
-async function createVideo(resolution, frameRate, totalFrames) {
-    const outputFileName = `${resolution}_${outputDirectory}.m3u8`;
-
+async function processResolution({
+  resolution,
+  targetWidth,
+  targetHeight,
+  videoBitrate,
+  frameRate,
+  totalFrames,
+}) {
+  return new Promise((resolve, reject) => {
     ffmpeg()
-        .input(inputFilePath)
-        .videoFilter(`scale=${getScale(resolution)}:flags=lanczos`)
-        .videoCodec("libx264")
-        .outputOptions("-profile:v main")
-        .outputOptions("-preset:v medium")
-        .videoBitrate(getVideoBitrate(resolution))
-        .outputOptions(`-maxrate ${getVideoBitrate(resolution)}`)
-        .outputOptions(`-bufsize ${getBufferSize(resolution)}`)
-        .outputOptions("-g 60")
-        .audioCodec("aac")
-        .audioBitrate("128k")
-        .audioChannels(2)
-        .outputOptions("-map 0")
-        .outputOptions("-c:s copy")
-        .outputOptions("-sn")
-        .outputOptions("-hls_time 6")
-        .outputOptions("-hls_playlist_type vod")
-        .outputOptions(`-hls_segment_filename ${outputDirectory}/${resolution}_%03d.ts`)
-        .output(`${outputDirectory}/${outputFileName}`)
-        .on("progress", (progress) => {
-            if (progress.frames && progress.timemark) {
-                const currentTime = calculateTimeInSeconds(progress.timemark);
-                const estimatedCurrentFrame = Math.floor(
-                    parseFrameRate(frameRate) * currentTime
-                );
-                const percent = Math.min(
-                    (estimatedCurrentFrame / totalFrames) * 100,
-                    100
-                );
+      .input(inputFilePath)
+      .videoFilter(`scale=${targetWidth}x${targetHeight}:flags=lanczos`)
+      .videoCodec("libx264")
+      .outputOptions("-profile:v main")
+      .outputOptions("-preset:v medium")
+      .videoBitrate(videoBitrate)
+      .outputOptions("-maxrate", videoBitrate)
+      .outputOptions("-bufsize", `${parseInt(videoBitrate) * 2}k`)
+      .outputOptions("-g 60")
+      .audioCodec("aac")
+      .audioBitrate("128k")
+      .audioChannels(2)
+      .outputOptions("-map 0")
+      .outputOptions("-c:s copy")
+      .outputOptions("-sn")
+      .outputOptions("-hls_time 6")
+      .outputOptions("-hls_playlist_type vod")
+      .outputOptions(
+        `-hls_segment_filename ${outputDirectory}/${resolution}_%03d.ts`
+      )
+      .output(`${outputDirectory}/output_${resolution}.m3u8`)
+      .on("progress", (progress) => {
+        if (progress.frames && progress.timemark) {
+          const currentTime = calculateTimeInSeconds(progress.timemark);
+          const estimatedCurrentFrame = Math.floor(
+            parseFrameRate(frameRate) * currentTime
+          );
+          const percent = Math.min(
+            (estimatedCurrentFrame / totalFrames) * 100,
+            100
+          );
 
-                process.stdout.write(`Processing: ${percent.toFixed(2)}% done\r`);
-            }
-        })
-        .on("end", () => {
-            console.log(`FFmpeg has finished for ${resolution}`);
-        })
-        .on("error", (error) => {
-            console.error(`Error processing ${resolution}:`, error);
-        })
-        .run();
+          process.stdout.write(
+            `\rProcessing ${resolution}: ${percent.toFixed(2)}% done`
+          );
+        }
+      })
+      .on("end", () => {
+        console.log(`\n${resolution} encoding finished.`);
+        resolve();
+      })
+      .on("error", (error) => {
+        console.error(`Error encoding ${resolution}:`, error);
+        reject(error);
+      })
+      .run();
+  });
+}
+async function getBestMatchingResolution(inputResolution) {
+  const resolutions = [
+    { name: "1080p", width: 1920, height: 1080 },
+    { name: "720p", width: 1280, height: 720 },
+    { name: "480p", width: 854, height: 480 },
+    { name: "360p", width: 640, height: 360 },
+  ];
+
+  let bestMatch = resolutions[0];
+  let minDifference = Math.abs(
+    inputResolution.width * inputResolution.height -
+      resolutions[0].width * resolutions[0].height
+  );
+
+  for (const res of resolutions) {
+    const difference = Math.abs(
+      inputResolution.width * inputResolution.height - res.width * res.height
+    );
+
+    if (difference < minDifference) {
+      minDifference = difference;
+      bestMatch = res;
+    }
+  }
+
+  return bestMatch;
 }
 
-function isResolutionLower(originalResolution, targetResolution) {
-    const resolutions = [
-        { width: 1920, height: 1080 },
-        { width: 1280, height: 720 },
-        { width: 854, height: 480 },
-        { width: 640, height: 360 }
-    ];
+(async () => {
+  try {
+    const { frameRate, totalFrames, resolution } = await getVideoInfo(
+      inputFilePath
+    );
+    console.log(resolution);
+    const resolutions = ["1080p", "720p", "480p", "360p"];
+    const convertedResolution = await getBestMatchingResolution(resolution);
 
-    const originalWidth = originalResolution.width;
-    const originalHeight = originalResolution.height;
-    const targetWidth = targetResolution.width;
-    const targetHeight = targetResolution.height;
+    for (const targetResolution of resolutions) {
+      let targetWidth, targetHeight, videoBitrate;
 
-    console.log("originalResolution", originalResolution);
-    console.log("targetResolution", targetResolution);
+      // Adjust target resolution based on input resolution
+      if (convertedResolution.width >= 1920 && targetResolution === "1080p") {
+        targetWidth = 1920;
+        targetHeight = 1080;
+        videoBitrate = "2500k";
+      } else if (
+        convertedResolution.width >= 1280 &&
+        targetResolution === "720p"
+      ) {
+        targetWidth = 1280;
+        targetHeight = 720;
+        videoBitrate = "1500k";
+      } else if (
+        convertedResolution.width >= 854 &&
+        targetResolution === "480p"
+      ) {
+        targetWidth = 854;
+        targetHeight = 480;
+        videoBitrate = "800k";
+      } else if (
+        convertedResolution.width >= 640 &&
+        targetResolution === "360p"
+      ) {
+        targetWidth = 640;
+        targetHeight = 360;
+        videoBitrate = "400k";
+      } else {
+        // If input resolution is lower than the target, use input resolution
+        targetWidth = convertedResolution.width;
+        targetHeight = convertedResolution.height;
+        videoBitrate = "400k";
+      }
 
-    // Check if both resolutions are valid
-    if (!isValidResolution(originalWidth, originalHeight) || !isValidResolution(targetWidth, targetHeight)) {
-        console.error("Invalid resolution(s)");
-        return false;
+      console.log(convertedResolution, targetResolution);
+      await processResolution({
+        resolution: targetResolution,
+        targetWidth,
+        targetHeight,
+        videoBitrate,
+        frameRate,
+        totalFrames,
+      });
     }
 
-    // Compare resolutions
-    const originalArea = originalWidth * originalHeight;
-    const targetArea = targetWidth * targetHeight;
-
-    console.log(originalArea > targetArea);
-    return originalArea > targetArea;
-}
-
-function isValidResolution(width, height) {
-    return typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0;
-}
-
-// Function to get the scale for a given resolution
-function getScale(resolution) {
-    switch (resolution) {
-        case "1080p":
-            return "1920x1080";
-        case "720p":
-            return "1280x720";
-        case "480p":
-            return "854x480";
-        case "360p":
-            return "640x360";
-        default:
-            return "1920x1080"; // Default to 1080p
-    }
-}
-
-// Function to get video bitrate for a given resolution
-function getVideoBitrate(resolution) {
-    switch (resolution) {
-        case "1080p":
-            return "2500k";
-        case "720p":
-            return "1500k";
-        case "480p":
-            return "800k";
-        case "360p":
-            return "400k";
-        default:
-            return "2500k"; // Default to 1080p bitrate
-    }
-}
-
-// Function to get video buffer size for a given resolution
-function getBufferSize(resolution) {
-    switch (resolution) {
-        case "1080p":
-            return "5000k";
-        case "720p":
-            return "3000k";
-        case "480p":
-            return "1600k";
-        case "360p":
-            return "800k";
-        default:
-            return "5000k"; // Default to 1080p buffer size
-    }
-}
-
-// Get video information
-getVideoInfo(inputFilePath)
-    .then(({ resolution, frameRate, totalFrames }) => {
-        console.log("resolution", resolution)
-        console.log("frameRate", frameRate)
-        console.log("totalFrames", totalFrames)
-        createLowerQualityVersions(resolution, frameRate, totalFrames);
-    })
-    .catch((error) => {
-        console.error(`Error getting video information: ${error.message}`);
-    });
-
+    console.log("\nAll resolutions processed.");
+  } catch (error) {
+    console.error(error.message);
+  }
+})();
 
 function calculateTimeInSeconds(timemark) {
-    const timeComponents = timemark.split(":").map(parseFloat);
-    return timeComponents[0] * 3600 + timeComponents[1] * 60 + timeComponents[2];
+  const timeComponents = timemark.split(":").map(parseFloat);
+  return timeComponents[0] * 3600 + timeComponents[1] * 60 + timeComponents[2];
 }
