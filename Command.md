@@ -4,7 +4,7 @@ To run the commands, follow these steps:
    Make sure you have FFmpeg installed on your system. You can download it from the [official FFmpeg website](https://ffmpeg.org/download.html) or use a package manager like `apt`, `brew`, or `chocolatey` depending on your operating system.
 
 2. **Create a Directory:**
-   Create a directory to organize your files. For example, create a directory named `Loki` where you will store the output files.
+   Create a directory to organize your files. For example, create a directory named `test` where you will store the output files.
 
    ```bash
    mkdir test
