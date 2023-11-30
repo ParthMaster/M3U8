@@ -7,7 +7,7 @@ To run the commands, follow these steps:
    Create a directory to organize your files. For example, create a directory named `Loki` where you will store the output files.
 
    ```bash
-   mkdir Loki
+   mkdir test
    ```
 
 3. **Generate Output Files:**
