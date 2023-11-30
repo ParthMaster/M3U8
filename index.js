@@ -2,8 +2,9 @@ const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
 const getVideoInfo = require("./utils/video-info");
 const generateMasterPlaylist = require("./utils/generate-master-playlist");
+const path = require("path");
 
-const inputFilePath = "input.mp4";
+const inputFilePath = "avatar_trailer.mp4";
 const outputDirectory = "output";
 const resolutions = [
   { name: "1080p", width: 1920, height: 1080, bitrate: "2500k" },
@@ -27,6 +28,11 @@ async function processResolution({
   totalFrames,
   durationInSeconds,
 }) {
+  const outputFilename = `${path.basename(
+    inputFilePath,
+    path.extname(inputFilePath)
+  )}_${resolution}`;
+  console.log({ outputFilename });
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(inputFilePath)
@@ -47,9 +53,9 @@ async function processResolution({
       .outputOptions("-hls_time 6")
       .outputOptions("-hls_playlist_type vod")
       .outputOptions(
-        `-hls_segment_filename ${outputDirectory}/${resolution}_%03d.ts`
+        `-hls_segment_filename ${outputDirectory}/${outputFilename}_%03d.ts`
       )
-      .output(`${outputDirectory}/output_${resolution}.m3u8`)
+      .output(`${outputDirectory}/output_${outputFilename}.m3u8`)
       .on("progress", (progress) => {
         // console.log(progress);
         if (progress.frames && progress.timemark) {
