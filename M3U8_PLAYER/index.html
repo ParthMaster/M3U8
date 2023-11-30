@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta property="locale" content="en_US">
+  <title> Videojs HLS Adaptive Streaming with quality resolution picker</title>
+
+  <link rel="stylesheet" href="https://www.nuevodevel.com/css/12092023.min.css" type="text/css">
+</head>
+
+<body>
+  <script>
+    var baseurl = "https://www.nuevodevel.com", zoneurl = "//cdnzone.nuevodevel.com", core = "8.4.2", recent = "v11.3.0", cdnurl = "//nvd.nuevodevel.com", streamurl = "//stream.nuevodevel.com", ext = "webp"; var poster = "https://assets1.ignimgs.com/2021/05/12/loki-poster-2-1620828778337_160w.jpg?width=980";
+  </script>
+
+  <main class="nuevo-container">
+
+    <section class="player page-in">
+      <h1 class="text-center">Videojs HLS Streaming Test</h1>
+      <div class="vjs-media" style="padding-top:42.6%">
+        <div class="vjs-child">
+          <video id="veoplayer" class="video-js vjs-fluid" controls preload="none" disableRemotePlayback
+            playsinline></video>
+        </div>
+      </div>
+    </section>
+
+    <link href="https://www.nuevodevel.com/vdjs/v11.3.0/skins/treso/videojs.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://www.nuevodevel.com/vdjs/v11.3.0/core/8.4.2/nsvideo.min.js"></script>
+    <script src="https://www.nuevodevel.com/vdjs/v11.3.0/plugins/videojs.hotkeys.min.js"></script>
+
+    <script>
+      var media_options = {
+        html5: { nativeAudioTracks: false },
+        poster: poster,
+        sources: [
+          { type: 'application/x-mpegURL', src: 'https://king-test.pages.dev/master.m3u8' }
+        ]
+      };
+      var player = videojs('veoplayer', media_options);
+      player.nuevo({
+        // video_id: 'unique Id',
+        // resume: true,
+        contextMenu: false,
+        buttonForward: true,
+        videoInfo: true,
+        infoTitle: 'Loki S02 E06 · Glorious Purpose',
+        infoDescription: "Loki learns the true nature of 'glorious purpose' as he rectifies the past to save the future.",
+      });
+      player.hotkeys({
+        volumeStep: 0.1,
+        seekStep: 5
+      });
+      // player.hotkeys({
+      //   enableFull: false,
+      //   enableMute: false,
+      //   enableVolumeScroll: false,
+      // });
+    </script>
+
+  </main>
+</body>
+
+</html>
