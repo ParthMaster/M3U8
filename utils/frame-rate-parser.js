@@ -1,5 +1,3 @@
-// frameRateParser.js
-
 function parseFrameRate(frameRateString, precision = 2) {
   if (frameRateString.includes("/")) {
     return parseFractionalFrameRate(frameRateString, precision);

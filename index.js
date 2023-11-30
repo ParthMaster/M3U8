@@ -1,10 +1,9 @@
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegStatic = require("ffmpeg-static");
-const getVideoInfo = require("./video-info");
-const fs = require("fs");
-const path = require("path");
+const getVideoInfo = require("./utils/video-info");
+const generateMasterPlaylist = require("./utils/generate-master-playlist");
 
-const inputFilePath = "input1.mkv";
+const inputFilePath = "input.mp4";
 const outputDirectory = "output";
 const resolutions = [
   { name: "1080p", width: 1920, height: 1080, bitrate: "2500k" },
@@ -13,8 +12,12 @@ const resolutions = [
   { name: "360p", width: 640, height: 360, bitrate: "400k" },
 ];
 
-ffmpeg.setFfmpegPath(ffmpegStatic);
+function calculateTimeInSeconds(timemark) {
+  const timeComponents = timemark.split(":").map(parseFloat);
+  return timeComponents[0] * 3600 + timeComponents[1] * 60 + timeComponents[2];
+}
 
+ffmpeg.setFfmpegPath(ffmpegStatic);
 async function processResolution({
   resolution,
   targetWidth,
@@ -22,13 +25,14 @@ async function processResolution({
   videoBitrate,
   frameRate,
   totalFrames,
+  durationInSeconds,
 }) {
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(inputFilePath)
       .videoFilter(`scale=${targetWidth}x${targetHeight}:flags=lanczos`)
       .videoCodec("libx265")
-    //   .outputOptions("-profile:v main")
+      //   .outputOptions("-profile:v main")
       .outputOptions("-preset:v medium")
       .videoBitrate(videoBitrate)
       .outputOptions("-maxrate", videoBitrate)
@@ -47,6 +51,7 @@ async function processResolution({
       )
       .output(`${outputDirectory}/output_${resolution}.m3u8`)
       .on("progress", (progress) => {
+        // console.log(progress);
         if (progress.frames && progress.timemark) {
           const currentTime = calculateTimeInSeconds(progress.timemark);
           const estimatedCurrentFrame = Math.floor(frameRate * currentTime);
@@ -54,9 +59,12 @@ async function processResolution({
             (estimatedCurrentFrame / totalFrames) * 100,
             100
           );
-
           process.stdout.write(
-            `\rProcessing ${resolution}: ${percent.toFixed(2)}% done`
+            `\rProcessing ${resolution}: ${percent.toFixed(
+              2
+            )}% done, current: ${
+              progress.timemark
+            } duration: ${durationInSeconds}`
           );
         }
       })
@@ -71,6 +79,7 @@ async function processResolution({
       .run();
   });
 }
+
 async function getBestMatchingResolution(inputResolution) {
   let bestMatch = resolutions[0];
   let minDifference = Math.abs(
@@ -94,10 +103,8 @@ async function getBestMatchingResolution(inputResolution) {
 
 (async () => {
   try {
-    const { frameRate, totalFrames, resolution } = await getVideoInfo(
-      inputFilePath
-    );
-
+    const { frameRate, totalFrames, resolution, durationInSeconds } =
+      await getVideoInfo(inputFilePath);
     const convertedResolution = await getBestMatchingResolution(resolution);
 
     const inputResolution = {
@@ -111,25 +118,8 @@ async function getBestMatchingResolution(inputResolution) {
         res.width <= inputResolution.width &&
         res.height <= inputResolution.height
     );
-
-    console.log(
-      "resolution:",
-      resolution,
-      "\nconvertedResolution:",
-      convertedResolution,
-      "\nfilteredResolutions:",
-      filteredResolutions
-    );
-
+    console.log(filteredResolutions);
     for (const targetResolution of filteredResolutions) {
-      console.log({
-        resolution: targetResolution.name,
-        targetWidth: targetResolution.width,
-        targetHeight: targetResolution.height,
-        videoBitrate: targetResolution.bitrate,
-        frameRate,
-        totalFrames,
-      });
       await processResolution({
         resolution: targetResolution.name,
         targetWidth: targetResolution.width,
@@ -137,49 +127,12 @@ async function getBestMatchingResolution(inputResolution) {
         videoBitrate: targetResolution.bitrate,
         frameRate,
         totalFrames,
+        durationInSeconds,
       });
     }
-    await generateMasterPlaylist(filteredResolutions);
+    await generateMasterPlaylist(filteredResolutions, outputDirectory);
     console.log("\nAll resolutions processed.");
   } catch (error) {
-    console.error(error.message);
+    console.error(error);
   }
 })();
-
-function calculateTimeInSeconds(timemark) {
-  const timeComponents = timemark.split(":").map(parseFloat);
-  return timeComponents[0] * 3600 + timeComponents[1] * 60 + timeComponents[2];
-}
-
-async function generateMasterPlaylist(resolutions) {
-  const masterPlaylistPath = path.join(outputDirectory, "master.m3u8");
-
-  const playlists = resolutions.map((resolution) => {
-    return {
-      path: `output_${resolution.name}.m3u8`,
-      resolution: `${resolution.width}x${resolution.height}`,
-    };
-  });
-  console.log(playlists);
-  const masterContent = `#EXTM3U\n${playlists
-    .map(
-      (playlist) =>
-        `#EXT-X-STREAM-INF:BANDWIDTH=${getBandwidth(
-          playlist.resolution
-        )},RESOLUTION=${playlist.resolution}\n${playlist.path}`
-    )
-    .join("\n")}`;
-
-  fs.writeFileSync(masterPlaylistPath, masterContent);
-
-  console.log("Master playlist created:", masterPlaylistPath);
-}
-
-function getBandwidth(resolution) {
-  // Calculate bandwidth based on resolution (you can adjust this calculation)
-  const [width, height] = resolution.split("x");
-  const bitrate = resolutions.find(
-    (res) => res.width === parseInt(width) && res.height === parseInt(height)
-  ).bitrate;
-  return parseInt(bitrate) * 1000; // Convert bitrate to bits per second
-}
